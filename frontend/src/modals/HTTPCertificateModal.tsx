@@ -10,6 +10,9 @@ import { Button, DomainNamesField } from "src/components";
 import { T } from "src/locale";
 import { showObjectSuccess } from "src/notifications";
 
+const ipv4Regex =
+	/^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
+
 const showHTTPCertificateModal = () => {
 	EasyModal.show(HTTPCertificateModal);
 };
@@ -26,6 +29,16 @@ const HTTPCertificateModal = EasyModal.create(({ visible, remove }: InnerModalPr
 		if (isSubmitting) return;
 		setIsSubmitting(true);
 		setErrorMsg(null);
+
+		if (values?.meta?.letsencryptShortLived) {
+			const invalidIp = values.domainNames?.find((domain: string) => !ipv4Regex.test(domain?.trim?.() || domain));
+			if (invalidIp) {
+				setErrorMsg(<T id="certificates.http.shortlived.invalid-ipv4" />);
+				setIsSubmitting(false);
+				setSubmitting(false);
+				return;
+			}
+		}
 
 		try {
 			await createCertificate(values);
@@ -117,6 +130,7 @@ const HTTPCertificateModal = EasyModal.create(({ visible, remove }: InnerModalPr
 						provider: "letsencrypt",
 						meta: {
 							keyType: "ecdsa",
+							letsencryptShortLived: false,
 						},
 					} as any
 				}
@@ -145,6 +159,27 @@ const HTTPCertificateModal = EasyModal.create(({ visible, remove }: InnerModalPr
 											setTestResults(null);
 										}}
 									/>
+									<Field name="meta.letsencryptShortLived">
+										{({ field, form }: any) => (
+											<div className="mb-3">
+												<div className="form-check form-switch">
+													<input
+														id="letsencryptShortLived"
+														className="form-check-input"
+														type="checkbox"
+														checked={!!field.value}
+														onChange={(e) => form.setFieldValue(field.name, e.target.checked)}
+													/>
+													<label className="form-check-label" htmlFor="letsencryptShortLived">
+														<T id="certificates.http.shortlived.label" />
+													</label>
+												</div>
+												<small className="form-text text-muted">
+													<T id="certificates.http.shortlived.help" />
+												</small>
+											</div>
+										)}
+									</Field>
 									<Field name="meta.keyType">
 										{({ field }: any) => (
 											<div className="mb-3">

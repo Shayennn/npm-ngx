@@ -227,6 +227,15 @@
 	"certificates.http.warning": {
 		"defaultMessage": "These domains must be already configured to point to this installation."
 	},
+	"certificates.http.shortlived.help": {
+		"defaultMessage": "Issues a short-lived Let's Encrypt certificate for IP addresses using HTTP validation. Only IPv4 addresses are supported."
+	},
+	"certificates.http.shortlived.invalid-ipv4": {
+		"defaultMessage": "Short-lived IP certificates require valid IPv4 addresses only."
+	},
+	"certificates.http.shortlived.label": {
+		"defaultMessage": "Request short-lived IP certificate (Let's Encrypt)"
+	},
 	"certificates.key-type": {
 		"defaultMessage": "Key Type"
 	},

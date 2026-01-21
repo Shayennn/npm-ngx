@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import https from "node:https";
+import net from "node:net";
 import path from "path";
 import archiver from "archiver";
 import _ from "lodash";
@@ -23,10 +24,14 @@ const letsencryptConfig = "/etc/letsencrypt.ini";
 const certbotCommand = "certbot";
 const certbotLogsDir = "/data/logs";
 const certbotWorkDir = "/tmp/letsencrypt-lib";
+// Certbot flag value for Let's Encrypt short-lived (IP) certificates
+const letsencryptShortLivedProfile = "shortlived";
 
 const omissions = () => {
 	return ["is_deleted", "owner.is_deleted", "meta.dns_provider_credentials"];
 };
+
+const isIpv4Address = (value) => net.isIP(`${value}`.trim()) === 4;
 
 const internalCertificate = {
 	allowedSslFiles: ["certificate", "certificate_key", "intermediate_certificate"],
@@ -120,6 +125,7 @@ const internalCertificate = {
 
 		if (data.provider === "letsencrypt") {
 			data.nice_name = data.domain_names.join(", ");
+			internalCertificate.validateLetsEncryptProfile(data);
 		}
 
 		// this command really should clean up and delete the cert if it can't fully succeed
@@ -225,6 +231,20 @@ const internalCertificate = {
 		await internalCertificate.addCreatedAuditLog(access, certificate.id, utils.omitRow(omissions())(data));
 
 		return utils.omitRow(omissions())(certificate);
+	},
+
+	validateLetsEncryptProfile: (certificate) => {
+		if (!certificate.meta?.letsencrypt_short_lived) {
+			return;
+		}
+
+		if (certificate.meta?.dns_challenge) {
+			throw new error.ValidationError("Short-lived Let's Encrypt certificates must use HTTP verification");
+		}
+
+		if (!certificate.domain_names?.length || !certificate.domain_names.every(isIpv4Address)) {
+			throw new error.ValidationError("Short-lived Let's Encrypt certificates require IPv4 addresses");
+		}
 	},
 
 	addCreatedAuditLog: async (access, certificate_id, meta) => {
@@ -803,6 +823,8 @@ const internalCertificate = {
 			args.push("--key-type", certificate.meta.key_type);
 		}
 
+		args.push(...internalCertificate.getCertificateProfileArgs(certificate));
+
 		const adds = internalCertificate.getAdditionalCertbotArgs(certificate.id);
 		args.push(...adds.args);
 
@@ -867,6 +889,8 @@ const internalCertificate = {
 		if (certificate.meta?.key_type) {
 			args.push("--key-type", certificate.meta.key_type);
 		}
+
+		args.push(...internalCertificate.getCertificateProfileArgs(certificate));
 
 		const adds = internalCertificate.getAdditionalCertbotArgs(certificate.id, certificate.meta.dns_provider);
 		args.push(...adds.args);
@@ -953,6 +977,8 @@ const internalCertificate = {
 			args.push("--key-type", certificate.meta.key_type);
 		}
 
+		args.push(...internalCertificate.getCertificateProfileArgs(certificate));
+
 		const adds = internalCertificate.getAdditionalCertbotArgs(certificate.id, certificate.meta.dns_provider);
 		args.push(...adds.args);
 
@@ -998,6 +1024,8 @@ const internalCertificate = {
 		if (certificate.meta?.key_type) {
 			args.push("--key-type", certificate.meta.key_type);
 		}
+
+		args.push(...internalCertificate.getCertificateProfileArgs(certificate));
 
 		const adds = internalCertificate.getAdditionalCertbotArgs(certificate.id, certificate.meta.dns_provider);
 		args.push(...adds.args);
@@ -1257,6 +1285,13 @@ const internalCertificate = {
 
 	getLiveCertPath: (certificateId) => {
 		return `/etc/letsencrypt/live/npm-${certificateId}`;
+	},
+
+	getCertificateProfileArgs: (certificate) => {
+		if (certificate.meta?.letsencrypt_short_lived) {
+			return ["--certificate-profile", letsencryptShortLivedProfile];
+		}
+		return [];
 	},
 };
 
