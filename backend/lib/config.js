@@ -255,4 +255,33 @@ const useLetsencryptServer = () => {
 	return null;
 };
 
-export { isCI, configHas, configGet, isSqlite, isMysql, isPostgres, isDebugMode, getPrivateKey, getPublicKey, useLetsencryptStaging, useLetsencryptServer };
+/**
+ * @returns {boolean}
+ */
+const useGtsStaging = () => !!process.env.GTS_STAGING;
+
+/**
+ * @returns {string|null}
+ */
+const useGtsServer = () => {
+	if (process.env.GTS_SERVER) {
+		return process.env.GTS_SERVER;
+	}
+	return null;
+};
+
+export {
+	isCI,
+	configHas,
+	configGet,
+	isSqlite,
+	isMysql,
+	isPostgres,
+	isDebugMode,
+	getPrivateKey,
+	getPublicKey,
+	useLetsencryptStaging,
+	useLetsencryptServer,
+	useGtsStaging,
+	useGtsServer,
+};

@@ -9,7 +9,12 @@ import { ProxyAgent } from "proxy-agent";
 import tempWrite from "temp-write";
 import dnsPlugins from "../certbot/dns-plugins.json" with { type: "json" };
 import { installPlugin } from "../lib/certbot.js";
-import { useLetsencryptServer, useLetsencryptStaging } from "../lib/config.js";
+import {
+	useGtsServer,
+	useGtsStaging,
+	useLetsencryptServer,
+	useLetsencryptStaging,
+} from "../lib/config.js";
 import error from "../lib/error.js";
 import utils from "../lib/utils.js";
 import { debug, ssl as logger } from "../logger.js";
@@ -26,6 +31,37 @@ const certbotLogsDir = "/data/logs";
 const certbotWorkDir = "/tmp/letsencrypt-lib";
 // Certbot flag value for Let's Encrypt short-lived (IP) certificates
 const letsencryptShortLivedProfile = "shortlived";
+const gtsAcmeDirectory = "https://dv.acme-v02.api.pki.goog/directory";
+const gtsAcmeStagingDirectory = "https://dv.acme-v02.test-api.pki.goog/directory";
+const acmeProviders = ["letsencrypt", "gts"];
+const acmeIssuerNames = {
+	letsencrypt: "Let's Encrypt",
+	gts: "Google Trust Services",
+};
+
+const isAcmeProvider = (provider) => acmeProviders.includes(provider);
+
+const getAcmeIssuer = (certificate) => {
+	if (typeof certificate === "string") {
+		return isAcmeProvider(certificate) ? certificate : certificate || "letsencrypt";
+	}
+
+	const provider = certificate?.provider;
+	const metaIssuer = certificate?.meta?.acme_issuer || certificate?.meta?.acmeIssuer;
+
+	if (isAcmeProvider(provider)) {
+		return provider;
+	}
+	if (isAcmeProvider(metaIssuer)) {
+		return metaIssuer;
+	}
+	if (provider) {
+		return provider;
+	}
+	return "letsencrypt";
+};
+
+const getAcmeIssuerName = (issuer) => acmeIssuerNames[issuer] || issuer;
 
 const omissions = () => {
 	return ["is_deleted", "owner.is_deleted", "meta.dns_provider_credentials"];
@@ -41,7 +77,7 @@ const internalCertificate = {
 	renewBeforeExpirationBy: [30, "days"],
 
 	initTimer: () => {
-		logger.info("Let's Encrypt Renewal Timer initialized");
+		logger.info("ACME Renewal Timer initialized");
 		internalCertificate.interval = setInterval(
 			internalCertificate.processExpiringHosts,
 			internalCertificate.intervalTimeout,
@@ -64,11 +100,11 @@ const internalCertificate = {
 				.add(internalCertificate.renewBeforeExpirationBy[0], internalCertificate.renewBeforeExpirationBy[1])
 				.format("YYYY-MM-DD HH:mm:ss");
 
-			// Fetch all the letsencrypt certs from the db that will expire within the configured threshold
+			// Fetch all the ACME certs from the db that will expire within the configured threshold
 			certificateModel
 				.query()
 				.where("is_deleted", 0)
-				.andWhere("provider", "letsencrypt")
+				.andWhere((builder) => builder.whereIn("provider", acmeProviders))
 				.andWhere("expires_on", "<", expirationThreshold)
 				.then((certificates) => {
 					if (!certificates || !certificates.length) {
@@ -123,17 +159,19 @@ const internalCertificate = {
 		await access.can("certificates:create", data);
 		data.owner_user_id = access.token.getUserId(1);
 
-		if (data.provider === "letsencrypt") {
+		if (isAcmeProvider(data.provider)) {
 			data.nice_name = data.domain_names.join(", ");
-			internalCertificate.validateLetsEncryptProfile(data);
+			internalCertificate.validateAcmeProfile(data);
 		}
 
 		// this command really should clean up and delete the cert if it can't fully succeed
 		const certificate = await certificateModel.query().insertAndFetch(data);
 
 		try {
-			if (certificate.provider === "letsencrypt") {
-				// Request a new Cert from LE. Let the fun begin.
+			if (isAcmeProvider(certificate.provider)) {
+				const issuer = getAcmeIssuer(certificate);
+				const issuerName = getAcmeIssuerName(issuer);
+				// Request a new Cert from the selected ACME issuer. Let the fun begin.
 
 				// 1. Find out any hosts that are using any of the hostnames in this cert
 				// 2. Disable them in nginx temporarily
@@ -151,7 +189,7 @@ const internalCertificate = {
 				const user = await userModel.query().where("is_deleted", 0).andWhere("id", data.owner_user_id).first();
 				if (!user || !user.email) {
 					throw new error.ValidationError(
-						"A valid email address must be set on your user account to use Let's Encrypt",
+						`A valid email address must be set on your user account to use ${issuerName}`,
 					);
 				}
 
@@ -160,7 +198,7 @@ const internalCertificate = {
 					try {
 						await internalNginx.reload();
 						// 4. Request cert
-						await internalCertificate.requestLetsEncryptSslWithDnsChallenge(certificate, user.email);
+						await internalCertificate.requestAcmeSslWithDnsChallenge(certificate, user.email);
 						await internalNginx.reload();
 						// 6. Re-instate previously disabled hosts
 						await internalCertificate.enableInUseHosts(inUseResult);
@@ -177,7 +215,7 @@ const internalCertificate = {
 						await internalNginx.reload();
 						setTimeout(() => {}, 5000);
 						// 4. Request cert
-						await internalCertificate.requestLetsEncryptSsl(certificate, user.email);
+						await internalCertificate.requestAcmeSsl(certificate, user.email);
 						// 5. Remove LE config
 						await internalNginx.deleteLetsEncryptRequestConfig(certificate);
 						await internalNginx.reload();
@@ -192,7 +230,7 @@ const internalCertificate = {
 					}
 				}
 
-				// At this point, the letsencrypt cert should exist on disk.
+				// At this point, the ACME cert should exist on disk.
 				// Lets get the expiry date from the file and update the row silently
 				try {
 					const certInfo = await internalCertificate.getCertificateInfoFromFile(
@@ -208,6 +246,7 @@ const internalCertificate = {
 					// Add cert data for audit log
 					savedRow.meta = _.assign({}, savedRow.meta, {
 						letsencrypt_certificate: certInfo,
+						acme_certificate: certInfo,
 					});
 
 					await internalCertificate.addCreatedAuditLog(access, certificate.id, savedRow);
@@ -233,9 +272,13 @@ const internalCertificate = {
 		return utils.omitRow(omissions())(certificate);
 	},
 
-	validateLetsEncryptProfile: (certificate) => {
+	validateAcmeProfile: (certificate) => {
 		if (!certificate.meta?.letsencrypt_short_lived) {
 			return;
+		}
+
+		if (getAcmeIssuer(certificate) !== "letsencrypt") {
+			throw new error.ValidationError("Short-lived certificates are only available when using Let's Encrypt");
 		}
 
 		if (certificate.meta?.dns_challenge) {
@@ -361,7 +404,7 @@ const internalCertificate = {
 	download: async (access, data) => {
 		await access.can("certificates:get", data);
 		const certificate = await internalCertificate.get(access, data);
-		if (certificate.provider === "letsencrypt") {
+		if (isAcmeProvider(certificate.provider)) {
 			const zipDirectory = internalCertificate.getLiveCertPath(data.id);
 			if (!fs.existsSync(zipDirectory)) {
 				throw new error.ItemNotFoundError(`Certificate ${certificate.nice_name} does not exists`);
@@ -381,7 +424,7 @@ const internalCertificate = {
 				fileName: opName,
 			};
 		}
-		throw new error.ValidationError("Only Let'sEncrypt certificates can be downloaded");
+		throw new error.ValidationError("Only ACME certificates can be downloaded");
 	},
 
 	/**
@@ -435,9 +478,9 @@ const internalCertificate = {
 			meta: _.omit(row, omissions()),
 		});
 
-		if (row.provider === "letsencrypt") {
+		if (isAcmeProvider(row.provider)) {
 			// Revoke the cert
-			await internalCertificate.revokeLetsEncryptSsl(row);
+			await internalCertificate.revokeAcmeSsl(row);
 		}
 		return true;
 	},
@@ -510,8 +553,8 @@ const internalCertificate = {
 		const dir = `/data/custom_ssl/npm-${certificate.id}`;
 
 		return new Promise((resolve, reject) => {
-			if (certificate.provider === "letsencrypt") {
-				reject(new Error("Refusing to write letsencrypt certs here"));
+			if (isAcmeProvider(certificate.provider)) {
+				reject(new Error("Refusing to write ACME certs here"));
 				return;
 			}
 
@@ -556,10 +599,16 @@ const internalCertificate = {
 	 * @returns {Promise}
 	 */
 	createQuickCertificate: async (access, data) => {
-		return await internalCertificate.create(access, {
-			provider: "letsencrypt",
-			domain_names: data.domain_names,
+		const certificateMeta = _.omit(data.meta || {}, ["acme_issuer", "acmeIssuer"]);
+		const provider = getAcmeIssuer({
+			provider: data.provider,
 			meta: data.meta,
+		});
+
+		return await internalCertificate.create(access, {
+			provider,
+			domain_names: data.domain_names,
+			meta: certificateMeta,
 		});
 	},
 
@@ -792,10 +841,10 @@ const internalCertificate = {
 	 * @param   {String}  email         the email address to use for registration
 	 * @returns {Promise}
 	 */
-	requestLetsEncryptSsl: async (certificate, email) => {
-		logger.info(
-			`Requesting LetsEncrypt certificates for Cert #${certificate.id}: ${certificate.domain_names.join(", ")}`,
-		);
+	requestAcmeSsl: async (certificate, email) => {
+		const issuer = getAcmeIssuer(certificate);
+		const issuerName = getAcmeIssuerName(issuer);
+		logger.info(`Requesting ${issuerName} certificates for Cert #${certificate.id}: ${certificate.domain_names.join(", ")}`);
 
 		const args = [
 			"certonly",
@@ -825,7 +874,7 @@ const internalCertificate = {
 
 		args.push(...internalCertificate.getCertificateProfileArgs(certificate));
 
-		const adds = internalCertificate.getAdditionalCertbotArgs(certificate.id);
+		const adds = internalCertificate.getAdditionalCertbotArgs(certificate);
 		args.push(...adds.args);
 
 		logger.info(`Command: ${certbotCommand} ${args ? args.join(" ") : ""}`);
@@ -840,11 +889,13 @@ const internalCertificate = {
 	 * @param   {String}   email        the email address to use for registration
 	 * @returns {Promise}
 	 */
-	requestLetsEncryptSslWithDnsChallenge: async (certificate, email) => {
+	requestAcmeSslWithDnsChallenge: async (certificate, email) => {
 		await installPlugin(certificate.meta.dns_provider);
 		const dnsPlugin = dnsPlugins[certificate.meta.dns_provider];
+		const issuer = getAcmeIssuer(certificate);
+		const issuerName = getAcmeIssuerName(issuer);
 		logger.info(
-			`Requesting LetsEncrypt certificates via ${dnsPlugin.name} for Cert #${certificate.id}: ${certificate.domain_names.join(", ")}`,
+			`Requesting ${issuerName} certificates via ${dnsPlugin.name} for Cert #${certificate.id}: ${certificate.domain_names.join(", ")}`,
 		);
 
 		const credentialsLocation = `/etc/letsencrypt/credentials/credentials-${certificate.id}`;
@@ -892,7 +943,7 @@ const internalCertificate = {
 
 		args.push(...internalCertificate.getCertificateProfileArgs(certificate));
 
-		const adds = internalCertificate.getAdditionalCertbotArgs(certificate.id, certificate.meta.dns_provider);
+		const adds = internalCertificate.getAdditionalCertbotArgs(certificate, certificate.meta.dns_provider);
 		args.push(...adds.args);
 
 		logger.info(`Command: ${certbotCommand} ${args ? args.join(" ") : ""}`);
@@ -918,10 +969,10 @@ const internalCertificate = {
 		await access.can("certificates:update", data);
 		const certificate = await internalCertificate.get(access, data);
 
-		if (certificate.provider === "letsencrypt") {
+		if (isAcmeProvider(certificate.provider)) {
 			const renewMethod = certificate.meta.dns_challenge
-				? internalCertificate.renewLetsEncryptSslWithDnsChallenge
-				: internalCertificate.renewLetsEncryptSsl;
+				? internalCertificate.renewAcmeSslWithDnsChallenge
+				: internalCertificate.renewAcmeSsl;
 
 			await renewMethod(certificate);
 			const certInfo = await internalCertificate.getCertificateInfoFromFile(
@@ -943,17 +994,17 @@ const internalCertificate = {
 			return updatedCertificate;
 		}
 
-		throw new error.ValidationError("Only Let'sEncrypt certificates can be renewed");
+		throw new error.ValidationError("Only ACME certificates can be renewed");
 	},
 
 	/**
 	 * @param   {Object}  certificate   the certificate row
 	 * @returns {Promise}
 	 */
-	renewLetsEncryptSsl: async (certificate) => {
-		logger.info(
-			`Renewing LetsEncrypt certificates for Cert #${certificate.id}: ${certificate.domain_names.join(", ")}`,
-		);
+	renewAcmeSsl: async (certificate) => {
+		const issuer = getAcmeIssuer(certificate);
+		const issuerName = getAcmeIssuerName(issuer);
+		logger.info(`Renewing ${issuerName} certificates for Cert #${certificate.id}: ${certificate.domain_names.join(", ")}`);
 
 		const args = [
 			"renew",
@@ -979,7 +1030,7 @@ const internalCertificate = {
 
 		args.push(...internalCertificate.getCertificateProfileArgs(certificate));
 
-		const adds = internalCertificate.getAdditionalCertbotArgs(certificate.id, certificate.meta.dns_provider);
+		const adds = internalCertificate.getAdditionalCertbotArgs(certificate, certificate.meta.dns_provider);
 		args.push(...adds.args);
 
 		logger.info(`Command: ${certbotCommand} ${args ? args.join(" ") : ""}`);
@@ -993,14 +1044,16 @@ const internalCertificate = {
 	 * @param   {Object}  certificate   the certificate row
 	 * @returns {Promise}
 	 */
-	renewLetsEncryptSslWithDnsChallenge: async (certificate) => {
+	renewAcmeSslWithDnsChallenge: async (certificate) => {
 		const dnsPlugin = dnsPlugins[certificate.meta.dns_provider];
 		if (!dnsPlugin) {
 			throw Error(`Unknown DNS provider '${certificate.meta.dns_provider}'`);
 		}
 
+		const issuer = getAcmeIssuer(certificate);
+		const issuerName = getAcmeIssuerName(issuer);
 		logger.info(
-			`Renewing LetsEncrypt certificates via ${dnsPlugin.name} for Cert #${certificate.id}: ${certificate.domain_names.join(", ")}`,
+			`Renewing ${issuerName} certificates via ${dnsPlugin.name} for Cert #${certificate.id}: ${certificate.domain_names.join(", ")}`,
 		);
 
 		const args = [
@@ -1027,7 +1080,7 @@ const internalCertificate = {
 
 		args.push(...internalCertificate.getCertificateProfileArgs(certificate));
 
-		const adds = internalCertificate.getAdditionalCertbotArgs(certificate.id, certificate.meta.dns_provider);
+		const adds = internalCertificate.getAdditionalCertbotArgs(certificate, certificate.meta.dns_provider);
 		args.push(...adds.args);
 
 		logger.info(`Command: ${certbotCommand} ${args ? args.join(" ") : ""}`);
@@ -1042,10 +1095,10 @@ const internalCertificate = {
 	 * @param   {Boolean} [throwErrors]
 	 * @returns {Promise}
 	 */
-	revokeLetsEncryptSsl: async (certificate, throwErrors) => {
-		logger.info(
-			`Revoking LetsEncrypt certificates for Cert #${certificate.id}: ${certificate.domain_names.join(", ")}`,
-		);
+	revokeAcmeSsl: async (certificate, throwErrors) => {
+		const issuer = getAcmeIssuer(certificate);
+		const issuerName = getAcmeIssuerName(issuer);
+		logger.info(`Revoking ${issuerName} certificates for Cert #${certificate.id}: ${certificate.domain_names.join(", ")}`);
 
 		const args = [
 			"revoke",
@@ -1060,7 +1113,7 @@ const internalCertificate = {
 			"--delete-after-revoke",
 		];
 
-		const adds = internalCertificate.getAdditionalCertbotArgs(certificate.id);
+		const adds = internalCertificate.getAdditionalCertbotArgs(certificate);
 		args.push(...adds.args);
 
 		logger.info(`Command: ${certbotCommand} ${args ? args.join(" ") : ""}`);
@@ -1082,7 +1135,7 @@ const internalCertificate = {
 	 * @param   {Object}  certificate
 	 * @returns {Boolean}
 	 */
-	hasLetsEncryptSslCerts: (certificate) => {
+	hasAcmeSslCerts: (certificate) => {
 		const letsencryptPath = internalCertificate.getLiveCertPath(certificate.id);
 		return fs.existsSync(`${letsencryptPath}/fullchain.pem`) && fs.existsSync(`${letsencryptPath}/privkey.pem`);
 	},
@@ -1259,24 +1312,31 @@ const internalCertificate = {
 		return `other:${result.responsecode}`;
 	},
 
-	getAdditionalCertbotArgs: (certificate_id, dns_provider) => {
+	getAdditionalCertbotArgs: (certificate, dns_provider) => {
 		const args = [];
-		if (useLetsencryptServer() !== null) {
-			args.push("--server", useLetsencryptServer());
-		}
-		if (useLetsencryptStaging() && useLetsencryptServer() === null) {
-			args.push("--staging");
+		const issuer = getAcmeIssuer(certificate);
+		const dnsProvider = dns_provider || certificate?.meta?.dns_provider;
+
+		if (issuer === "gts") {
+			const server = useGtsServer() || (useGtsStaging() ? gtsAcmeStagingDirectory : gtsAcmeDirectory);
+			args.push("--server", server);
+		} else if (issuer === "letsencrypt") {
+			if (useLetsencryptServer() !== null) {
+				args.push("--server", useLetsencryptServer());
+			} else if (useLetsencryptStaging()) {
+				args.push("--staging");
+			}
 		}
 
 		// For route53, add the credentials file as an environment variable,
 		// inheriting the process env
 		const opts = {};
-		if (certificate_id && dns_provider === "route53") {
+		if (certificate?.id && dnsProvider === "route53") {
 			opts.env = process.env;
-			opts.env.AWS_CONFIG_FILE = `/etc/letsencrypt/credentials/credentials-${certificate_id}`;
+			opts.env.AWS_CONFIG_FILE = `/etc/letsencrypt/credentials/credentials-${certificate.id}`;
 		}
 
-		if (dns_provider === "duckdns") {
+		if (dnsProvider === "duckdns") {
 			args.push("--dns-duckdns-no-txt-restore");
 		}
 
@@ -1288,7 +1348,7 @@ const internalCertificate = {
 	},
 
 	getCertificateProfileArgs: (certificate) => {
-		if (certificate.meta?.letsencrypt_short_lived) {
+		if (certificate.meta?.letsencrypt_short_lived && getAcmeIssuer(certificate) === "letsencrypt") {
 			return ["--certificate-profile", letsencryptShortLivedProfile];
 		}
 		return [];

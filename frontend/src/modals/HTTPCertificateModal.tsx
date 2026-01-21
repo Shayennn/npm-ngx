@@ -6,7 +6,7 @@ import { type ReactNode, useState } from "react";
 import { Alert } from "react-bootstrap";
 import Modal from "react-bootstrap/Modal";
 import { createCertificate, testHttpCertificate } from "src/api/backend";
-import { Button, DomainNamesField } from "src/components";
+import { Button, CertificateIssuerField, DomainNamesField } from "src/components";
 import { T } from "src/locale";
 import { showObjectSuccess } from "src/notifications";
 
@@ -30,8 +30,21 @@ const HTTPCertificateModal = EasyModal.create(({ visible, remove }: InnerModalPr
 		setIsSubmitting(true);
 		setErrorMsg(null);
 
-		if (values?.meta?.letsencryptShortLived) {
-			const invalidIp = values.domainNames?.find((domain: string) => !ipv4Regex.test(domain?.trim?.() || domain));
+		const submission = {
+			...values,
+			meta: {
+				...(values?.meta || {}),
+			},
+		};
+
+		if (submission?.provider !== "letsencrypt" && submission?.meta?.letsencryptShortLived) {
+			submission.meta.letsencryptShortLived = false;
+		}
+
+		if (submission?.meta?.letsencryptShortLived) {
+			const invalidIp = submission.domainNames?.find((domain: string) =>
+				!ipv4Regex.test(domain?.trim?.() || domain),
+			);
 			if (invalidIp) {
 				setErrorMsg(<T id="certificates.http.shortlived.invalid-ipv4" />);
 				setIsSubmitting(false);
@@ -41,7 +54,7 @@ const HTTPCertificateModal = EasyModal.create(({ visible, remove }: InnerModalPr
 		}
 
 		try {
-			await createCertificate(values);
+			await createCertificate(submission);
 			showObjectSuccess("certificate", "saved");
 			remove();
 		} catch (err: any) {
@@ -136,7 +149,7 @@ const HTTPCertificateModal = EasyModal.create(({ visible, remove }: InnerModalPr
 				}
 				onSubmit={onSubmit}
 			>
-				{() => (
+				{({ values }) => (
 					<Form>
 						<Modal.Header closeButton>
 							<Modal.Title>
@@ -159,6 +172,7 @@ const HTTPCertificateModal = EasyModal.create(({ visible, remove }: InnerModalPr
 											setTestResults(null);
 										}}
 									/>
+									<CertificateIssuerField helperId="certificates.issuer.help" />
 									<Field name="meta.letsencryptShortLived">
 										{({ field, form }: any) => (
 											<div className="mb-3">
@@ -167,8 +181,14 @@ const HTTPCertificateModal = EasyModal.create(({ visible, remove }: InnerModalPr
 														id="letsencryptShortLived"
 														className="form-check-input"
 														type="checkbox"
-														checked={!!field.value}
-														onChange={(e) => form.setFieldValue(field.name, e.target.checked)}
+														checked={!!field.value && values.provider === "letsencrypt"}
+														disabled={values.provider !== "letsencrypt"}
+														onChange={(e) =>
+															form.setFieldValue(
+																field.name,
+																values.provider === "letsencrypt" ? e.target.checked : false,
+															)
+														}
 													/>
 													<label className="form-check-label" htmlFor="letsencryptShortLived">
 														<T id="certificates.http.shortlived.label" />
@@ -177,6 +197,11 @@ const HTTPCertificateModal = EasyModal.create(({ visible, remove }: InnerModalPr
 												<small className="form-text text-muted">
 													<T id="certificates.http.shortlived.help" />
 												</small>
+												{values.provider !== "letsencrypt" ? (
+													<small className="form-text text-danger d-block">
+														<T id="certificates.http.shortlived.invalid-issuer" />
+													</small>
+												) : null}
 											</div>
 										)}
 									</Field>

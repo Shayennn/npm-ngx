@@ -5,7 +5,7 @@ import { type ReactNode, useState } from "react";
 import { Alert } from "react-bootstrap";
 import Modal from "react-bootstrap/Modal";
 import { createCertificate } from "src/api/backend";
-import { Button, DNSProviderFields, DomainNamesField } from "src/components";
+import { Button, CertificateIssuerField, DNSProviderFields, DomainNamesField } from "src/components";
 import { T } from "src/locale";
 import { showObjectSuccess } from "src/notifications";
 
@@ -64,6 +64,7 @@ const DNSCertificateModal = EasyModal.create(({ visible, remove }: InnerModalPro
 							<div className="card m-0 border-0">
 								<div className="card-body">
 									<DomainNamesField isWildcardPermitted dnsProviderWildcardSupported />
+									<CertificateIssuerField helperId="certificates.issuer.help" />
 									<Field name="meta.keyType">
 										{({ field }: any) => (
 											<div className="mb-3">

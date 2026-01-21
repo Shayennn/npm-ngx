@@ -1,6 +1,6 @@
 import cn from "classnames";
 import { Field, useFormikContext } from "formik";
-import { DNSProviderFields, DomainNamesField } from "src/components";
+import { CertificateIssuerField, DNSProviderFields, DomainNamesField } from "src/components";
 import { T } from "src/locale";
 
 interface Props {
@@ -120,6 +120,7 @@ export function SSLOptionsFields({ forHttp = true, forceDNSForNew, requireDomain
 			{forHttp ? getHttpOptions() : null}
 			{newCertificate ? (
 				<>
+					<CertificateIssuerField name="meta.acmeIssuer" helperId="certificates.issuer.help" />
 					<Field name="meta.dnsChallenge">
 						{({ field }: any) => (
 							<label className="form-check form-switch mt-1">

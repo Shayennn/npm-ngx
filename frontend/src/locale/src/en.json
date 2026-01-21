@@ -233,8 +233,17 @@
 	"certificates.http.shortlived.invalid-ipv4": {
 		"defaultMessage": "Short-lived IP certificates require valid IPv4 addresses only."
 	},
+	"certificates.http.shortlived.invalid-issuer": {
+		"defaultMessage": "Short-lived certificates are only available when using Let's Encrypt."
+	},
 	"certificates.http.shortlived.label": {
 		"defaultMessage": "Request short-lived IP certificate (Let's Encrypt)"
+	},
+	"certificates.issuer": {
+		"defaultMessage": "Issuer"
+	},
+	"certificates.issuer.help": {
+		"defaultMessage": "Choose which ACME certificate authority to use."
 	},
 	"certificates.key-type": {
 		"defaultMessage": "Key Type"
@@ -249,7 +258,7 @@
 		"defaultMessage": "RSA 2048"
 	},
 	"certificates.request.subtitle": {
-		"defaultMessage": "with Let's Encrypt"
+		"defaultMessage": "with ACME (Let's Encrypt / Google Trust Services)"
 	},
 	"certificates.request.title": {
 		"defaultMessage": "Request a new Certificate"
@@ -452,14 +461,17 @@
 	"http-only": {
 		"defaultMessage": "HTTP Only"
 	},
+	"gts": {
+		"defaultMessage": "Google Trust Services"
+	},
 	"lets-encrypt": {
 		"defaultMessage": "Let's Encrypt"
 	},
 	"lets-encrypt-via-dns": {
-		"defaultMessage": "Let's Encrypt via DNS"
+		"defaultMessage": "ACME (Let's Encrypt / Google Trust Services) via DNS"
 	},
 	"lets-encrypt-via-http": {
-		"defaultMessage": "Let's Encrypt via HTTP"
+		"defaultMessage": "ACME (Let's Encrypt / Google Trust Services) via HTTP"
 	},
 	"loading": {
 		"defaultMessage": "Loading…"

@@ -13,6 +13,16 @@ interface CertOption {
 	readonly icon: React.ReactNode;
 }
 
+const getProviderLabel = (cert: Certificate) => {
+	if (cert.provider === "letsencrypt") {
+		return intl.formatMessage({ id: "lets-encrypt" });
+	}
+	if (cert.provider === "gts") {
+		return intl.formatMessage({ id: "gts" });
+	}
+	return cert.provider;
+};
+
 const Option = (props: OptionProps<CertOption>) => {
 	return (
 		<components.Option {...props}>
@@ -77,7 +87,7 @@ export function SSLCertificateField({
 		data?.map((cert: Certificate) => ({
 			value: cert.id,
 			label: cert.niceName,
-			subLabel: `${cert.provider === "letsencrypt" ? intl.formatMessage({ id: "lets-encrypt" }) : cert.provider} — ${intl.formatMessage({ id: "expires.on" }, { date: cert.expiresOn ? formatDateTime(cert.expiresOn, locale) : "N/A" })}`,
+			subLabel: `${getProviderLabel(cert)} — ${intl.formatMessage({ id: "expires.on" }, { date: cert.expiresOn ? formatDateTime(cert.expiresOn, locale) : "N/A" })}`,
 			icon: <IconShield size={14} className="text-pink" />,
 		})) || [];
 

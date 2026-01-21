@@ -106,7 +106,7 @@ const setupCertbotPlugins = async () => {
 	const certificates = await certificateModel
 		.query()
 		.where("is_deleted", 0)
-		.andWhere("provider", "letsencrypt");
+		.whereIn("provider", ["letsencrypt", "gts"]);
 
 	if (certificates?.length) {
 		const plugins = [];

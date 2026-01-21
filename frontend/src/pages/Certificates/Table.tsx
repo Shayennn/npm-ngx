@@ -57,15 +57,17 @@ export default function Table({ data, isFetching, onDelete, onRenew, onDownload,
 				header: intl.formatMessage({ id: "column.provider" }),
 				cell: (info: any) => {
 					const r = info.getValue();
-					if (r.provider === "letsencrypt") {
+					const isAcme = r.provider === "letsencrypt" || r.provider === "gts";
+					if (isAcme) {
+						const issuerLabel = r.provider === "gts" ? <T id="gts" /> : <T id="lets-encrypt" />;
 						if (r.meta?.dnsChallenge && r.meta?.dnsProvider) {
 							return (
 								<>
-									<T id="lets-encrypt" /> &ndash; {r.meta?.dnsProvider}
+									{issuerLabel} &ndash; {r.meta?.dnsProvider}
 								</>
 							);
 						}
-						return <T id="lets-encrypt" />;
+						return issuerLabel;
 					}
 					if (r.provider === "other") {
 						return <T id="certificates.custom" />;

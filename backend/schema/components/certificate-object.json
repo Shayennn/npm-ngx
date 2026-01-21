@@ -68,6 +68,9 @@
 				"letsencrypt_certificate": {
 					"type": "object"
 				},
+				"acme_certificate": {
+					"type": "object"
+				},
 				"letsencrypt_short_lived": {
 					"type": "boolean",
 					"description": "Request Let's Encrypt short-lived (IP) certificate profile"
