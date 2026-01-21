@@ -3,7 +3,7 @@ import { ProxyAgent } from "proxy-agent";
 import { debug, remoteVersion as logger } from "../logger.js";
 import pjson from "../package.json" with { type: "json" };
 
-const VERSION_URL = "https://api.github.com/repos/NginxProxyManager/nginx-proxy-manager/releases/latest";
+const VERSION_URL = "https://api.github.com/repos/Shayennn/npm-ngx/releases/latest";
 
 const internalRemoteVersion = {
 	cache_timeout: 1000 * 60 * 15, // 15 minutes

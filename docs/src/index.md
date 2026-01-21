@@ -14,7 +14,7 @@ hero:
       link: /guide/
     - theme: alt
       text: GitHub
-      link: https://github.com/NginxProxyManager/nginx-proxy-manager
+      link: https://github.com/Shayennn/npm-ngx
 
 features:
   - title: Get Connected

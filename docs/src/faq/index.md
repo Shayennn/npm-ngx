@@ -15,7 +15,7 @@ use by the project.
 
 Yes! The docker image is multi-arch and is built for a variety of architectures. If yours is
 [not listed](https://hub.docker.com/r/jc21/nginx-proxy-manager/tags) please open a
-[GitHub issue](https://github.com/NginxProxyManager/nginx-proxy-manager/issues/new?assignees=&labels=enhancement&template=feature_request.md&title=).
+[GitHub issue](https://github.com/Shayennn/npm-ngx/issues/new?assignees=&labels=enhancement&template=feature_request.md&title=).
 
 ## I can't get my service to proxy properly?
 

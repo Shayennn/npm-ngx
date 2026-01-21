@@ -48,7 +48,7 @@ export default defineConfig({
 			}
 		],
 		socialLinks: [
-			{ icon: 'github', link: 'https://github.com/NginxProxyManager/nginx-proxy-manager' }
+			{ icon: 'github', link: 'https://github.com/Shayennn/npm-ngx' }
 		],
 		search: {
 			provider: 'local'

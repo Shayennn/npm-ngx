@@ -218,7 +218,7 @@ You can customise the logrotate configuration through a mount (if your custom co
     - ./logrotate.custom:/etc/logrotate.d/nginx-proxy-manager
 ```
 
-For reference, the default configuration can be found [here](https://github.com/NginxProxyManager/nginx-proxy-manager/blob/develop/docker/rootfs/etc/logrotate.d/nginx-proxy-manager).
+For reference, the default configuration can be found [here](https://github.com/Shayennn/npm-ngx/blob/develop/docker/rootfs/etc/logrotate.d/nginx-proxy-manager).
 
 ## Enabling the geoip2 module
 

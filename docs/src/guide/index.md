@@ -107,11 +107,11 @@ Documentation within the `develop` branch is available for preview at
 
 ### Contributors
 
-Special thanks to [all of our contributors](https://github.com/NginxProxyManager/nginx-proxy-manager/graphs/contributors).
+Special thanks to [all of our contributors](https://github.com/Shayennn/npm-ngx/graphs/contributors).
 
 
 ## Getting Support
 
-1. [Found a bug?](https://github.com/NginxProxyManager/nginx-proxy-manager/issues)
-2. [Discussions](https://github.com/NginxProxyManager/nginx-proxy-manager/discussions)
+1. [Found a bug?](https://github.com/Shayennn/npm-ngx/issues)
+2. [Discussions](https://github.com/Shayennn/npm-ngx/discussions)
 3. [Reddit](https://reddit.com/r/nginxproxymanager)
